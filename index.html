@@ -1,0 +1,1327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TFN Radar — M&A Target Intelligence</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/pyodide/v0.25.0/full/pyodide.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Syne:wght@400;500;600;700&family=Inter:wght@400;500&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a1927;
+    --bg2: #0f241f;
+    --bg3: #15332b;
+    --border: rgba(80, 180, 120, 0.15);
+    --border2: rgba(80, 180, 120, 0.25);
+    --text: #eafff5;
+    --text2: #9bc4b5;
+    --text3: #5e8b78;
+    --accent: #2ecc71;
+    --accent2: #27ae60;
+    --accent-glow: rgba(46, 204, 113, 0.2);
+    --red: #e74c3c;
+    --amber: #f39c12;
+    --teal: #1abc9c;
+    --blue: #3498db;
+    --purple: #9b59b6;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --font-head: 'Syne', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  body { background: var(--bg); color: var(--text); font-family: var(--font-body); font-size: 14px; line-height: 1.6; min-height: 100vh; }
+  .app { display: flex; flex-direction: column; min-height: 100vh; }
+
+  header {
+    padding: 20px 32px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; background: var(--bg); z-index: 100;
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-mark {
+    width: 28px; height: 28px;
+    background: linear-gradient(135deg, var(--accent), var(--teal));
+    border-radius: 6px; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 0 12px var(--accent-glow);
+  }
+  .logo-mark svg { width: 16px; height: 16px; }
+  .logo-text {
+    font-family: var(--font-head); font-size: 15px; font-weight: 600; letter-spacing: -0.3px;
+    background: linear-gradient(135deg, var(--text), var(--accent));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .logo-sub { font-size: 11px; color: var(--text3); font-family: var(--font-mono); letter-spacing: 0.05em; text-transform: uppercase; }
+  .header-status { font-family: var(--font-mono); font-size: 11px; color: var(--text3); display: flex; align-items: center; gap: 6px; }
+  .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text3); }
+  .status-dot.active { background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+  main { flex: 1; padding: 32px; max-width: 1200px; width: 100%; margin: 0 auto; }
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  .upload-hero { text-align: center; padding: 60px 20px 40px; }
+  .upload-hero h1 { font-family: var(--font-head); font-size: 38px; font-weight: 700; letter-spacing: -1px; line-height: 1.1; margin-bottom: 12px; }
+  .upload-hero h1 span { color: var(--accent); }
+  .upload-hero p { color: var(--text2); font-size: 15px; max-width: 480px; margin: 0 auto 40px; line-height: 1.7; }
+
+  .upload-zone {
+    border: 1.5px dashed var(--border2); border-radius: var(--radius-lg);
+    padding: 48px 40px; text-align: center; cursor: pointer;
+    transition: border-color 0.2s, background 0.2s;
+    max-width: 520px; margin: 0 auto 24px;
+    background: linear-gradient(135deg, var(--bg2), var(--bg3));
+    position: relative;
+  }
+  .upload-zone:hover, .upload-zone.drag-over {
+    border-color: var(--accent);
+    background: linear-gradient(135deg, rgba(46, 204, 113, 0.05), rgba(26, 188, 156, 0.05));
+    box-shadow: 0 0 20px var(--accent-glow);
+  }
+  .upload-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+  .upload-icon { width: 48px; height: 48px; border-radius: 10px; background: rgba(46, 204, 113, 0.1); display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+  .upload-icon svg { width: 22px; height: 22px; stroke: var(--accent); }
+  .upload-zone h3 { font-family: var(--font-head); font-size: 16px; font-weight: 600; margin-bottom: 6px; }
+  .upload-zone p { color: var(--text2); font-size: 13px; margin: 0; }
+
+  .field-map { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; max-width: 520px; margin: 0 auto 24px; }
+  .field-map h4 { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text3); margin-bottom: 14px; }
+  .field-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 13px; }
+  .field-label { color: var(--text2); width: 160px; flex-shrink: 0; font-family: var(--font-mono); font-size: 12px; }
+  .field-row select { flex: 1; background: linear-gradient(135deg, var(--bg2), var(--bg3)); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 6px 10px; font-size: 13px; font-family: var(--font-body); outline: none; }
+  .field-row select:focus { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--accent), var(--teal)); color: #0d0e10;
+    border: none; border-radius: var(--radius); padding: 12px 28px;
+    font-family: var(--font-head); font-size: 14px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    transition: all 0.2s ease; box-shadow: 0 4px 12px rgba(46, 204, 113, 0.3);
+  }
+  .btn-primary:hover { background: linear-gradient(135deg, var(--accent2), var(--teal)); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(46, 204, 113, 0.4); }
+  .btn-primary:active { transform: scale(0.98); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-secondary { background: transparent; color: var(--text2); border: 1px solid var(--border2); border-radius: var(--radius); padding: 8px 16px; font-family: var(--font-body); font-size: 13px; cursor: pointer; transition: all 0.15s; }
+  .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+  .progress-screen { text-align: center; padding: 80px 20px; }
+  .progress-screen h2 { font-family: var(--font-head); font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+  .progress-screen p { color: var(--text2); margin-bottom: 40px; }
+  .progress-bar-wrap { background: var(--bg3); border-radius: 4px; height: 4px; max-width: 360px; margin: 0 auto 16px; overflow: hidden; }
+  .progress-bar { height: 100%; background: linear-gradient(90deg, var(--accent), var(--teal)); border-radius: 4px; transition: width 0.4s ease; width: 0%; box-shadow: 0 0 8px var(--accent-glow); }
+  .progress-label { font-family: var(--font-mono); font-size: 12px; color: var(--text3); }
+
+  .results-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 28px; gap: 20px; flex-wrap: wrap; }
+  .results-header h2 { font-family: var(--font-head); font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+  .results-header h2 span { color: var(--accent); }
+
+  .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 28px; }
+  .stat-card { background: linear-gradient(135deg, var(--bg2), var(--bg3)); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius-lg); padding: 14px 16px; transition: transform 0.2s ease; }
+  .stat-card:hover { transform: translateY(-2px); }
+  .stat-label { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text3); margin-bottom: 6px; }
+  .stat-value { font-family: var(--font-head); font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+  .stat-value.accent { color: var(--accent); }
+  .stat-value.red { color: var(--red); }
+  .stat-value.amber { color: var(--amber); }
+
+  .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
+  .filter-select, .search-input { background: linear-gradient(135deg, var(--bg2), var(--bg3)); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 7px 12px; font-size: 13px; font-family: var(--font-body); outline: none; cursor: pointer; }
+  .filter-select:focus, .search-input:focus { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+  .filter-select option { background: var(--bg); color: var(--text);}
+  .search-input { width: 220px; }
+  .search-input::placeholder { color: var(--text3); }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg2); }
+  table { width: 100%; border-collapse: collapse; min-width: 900px; }
+  thead th { padding: 12px 16px; text-align: left; font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text3); border-bottom: 2px solid var(--accent); white-space: nowrap; cursor: pointer; user-select: none; }
+  thead th:hover { color: var(--text2); }
+  thead th.sorted { color: var(--accent); }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background 0.1s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,0.025); }
+  td { padding: 13px 16px; font-size: 13px; vertical-align: middle; }
+  .td-company { font-weight: 500; font-family: var(--font-head); font-size: 13px; }
+  .td-sector { color: var(--text2); font-size: 12px; }
+
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-family: var(--font-mono); font-weight: 500; white-space: nowrap; }
+  .badge-seed { background: linear-gradient(135deg, rgba(155, 89, 182, 0.2), rgba(142, 68, 173, 0.1)); border: 1px solid rgba(155, 89, 182, 0.3); }
+  .badge-a { background: linear-gradient(135deg, rgba(52, 152, 219, 0.2), rgba(41, 128, 185, 0.1)); border: 1px solid rgba(52, 152, 219, 0.3); }
+  .badge-b { background: linear-gradient(135deg, rgba(26, 188, 156, 0.2), rgba(22, 160, 133, 0.1)); border: 1px solid rgba(26, 188, 156, 0.3); }
+  .badge-c { background: linear-gradient(135deg, rgba(46, 204, 113, 0.2), rgba(39, 174, 96, 0.1)); border: 1px solid rgba(46, 204, 113, 0.3); }
+
+  /* Survival probability bar */
+  .surv-bar-wrap { display: flex; align-items: center; gap: 8px; }
+  .surv-bar-bg { flex: 1; height: 6px; background: var(--bg3); border-radius: 3px; min-width: 60px; overflow: hidden; }
+  .surv-bar { height: 100%; border-radius: 3px; transition: width 0.3s; }
+  .surv-bar.low { background: linear-gradient(90deg, var(--amber), #f39c12); }
+  .surv-bar.mid { background: linear-gradient(90deg, #ff8c42, #e67e22); }
+  .surv-bar.high { background: linear-gradient(90deg, var(--red), #c0392b); }
+  .surv-pct { font-family: var(--font-mono); font-size: 12px; min-width: 40px; text-align: right; }
+  .surv-pct.low { color: var(--amber); }
+  .surv-pct.mid { color: #ff8c42; }
+  .surv-pct.high { color: var(--red); }
+
+  .months-late { font-family: var(--font-mono); font-size: 12px; }
+  .months-late.high { color: var(--red); }
+  .months-late.mid { color: #ff8c42; }
+  .months-late.low { color: var(--amber); }
+
+  .sector-chart { background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 20px 24px; margin-bottom: 24px; }
+  .sector-chart h4 { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text3); margin-bottom: 16px; }
+  .sector-row { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-size: 12px; }
+  .sector-name { width: 160px; flex-shrink: 0; color: var(--text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sector-bar-bg { flex: 1; height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+  .sector-bar { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--accent), var(--teal)); }
+  .sector-count { font-family: var(--font-mono); font-size: 11px; color: var(--text3); min-width: 28px; text-align: right; }
+
+  .export-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid var(--border2); border-radius: var(--radius); color: var(--text2); padding: 8px 14px; font-size: 13px; font-family: var(--font-body); cursor: pointer; transition: all 0.2s ease; }
+  .export-btn:hover { border-color: var(--accent); background: linear-gradient(135deg, rgba(46, 204, 113, 0.1), rgba(26, 188, 156, 0.05)); transform: translateY(-1px); }
+
+  .demo-link { color: var(--accent); background: none; border: none; cursor: pointer; font-size: 13px; font-family: var(--font-body); text-decoration: underline; text-underline-offset: 3px; transition: all 0.2s ease; }
+  .demo-link:hover { color: var(--teal); }
+
+  .model-info { background: linear-gradient(135deg, var(--bg2), var(--bg3)); border: 1px solid var(--border); border-left: 3px solid var(--accent); border-radius: var(--radius); padding: 14px 16px; margin-bottom: 24px; font-size: 13px; color: var(--text2); line-height: 1.7; position: relative; overflow: hidden; }
+  .model-info::before { content: ''; position: absolute; top: 0; right: 0; width: 100px; height: 100px; background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%); opacity: 0.3; pointer-events: none; }
+  .model-info strong { color: var(--text); font-weight: 500; }
+
+  /* Tooltip for conditional survival probability */
+  .tooltip-wrap { position: relative; display: inline-block; }
+  .tooltip-wrap .tip { visibility: hidden; background: #1a2e25; border: 1px solid var(--border2); color: var(--text); text-align: left; padding: 8px 10px; border-radius: 6px; font-size: 11px; font-family: var(--font-mono); line-height: 1.5; white-space: nowrap; position: absolute; z-index: 10; bottom: 130%; left: 50%; transform: translateX(-50%); box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  .tooltip-wrap:hover .tip { visibility: visible; }
+
+  .tfn-brand { text-align: center; margin-top: 40px; padding-top: 24px; border-top: 1px solid var(--border); font-family: var(--font-mono); font-size: 11px; color: var(--text3); }
+
+  @media (max-width: 640px) { main { padding: 20px 16px; } .upload-hero h1 { font-size: 28px; } header { padding: 16px 20px; } }
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="8" cy="8" r="6" stroke="#0d0e10" stroke-width="1.5"/>
+          <path d="M5 8h6M8 5v6" stroke="#0d0e10" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="logo-text">TFN Radar</div>
+        <div class="logo-sub">Transition Finance Network · M&A Intelligence</div>
+      </div>
+    </div>
+    <div class="header-status">
+      <div class="status-dot" id="status-dot"></div>
+      <span id="status-text">awaiting data</span>
+    </div>
+  </header>
+
+  <main>
+    <div class="screen active" id="screen-upload">
+      <div class="upload-hero">
+        <h1>Find companies that should have<br><span>raised by now</span></h1>
+        <p>Upload your CTVC export. The model identifies UK companies overdue for their next fundraising round — your M&A pipeline, surfaced automatically.</p>
+      </div>
+
+      <div class="upload-zone" id="upload-zone">
+        <input type="file" id="file-input" accept=".csv,.xlsx,.xls">
+        <div class="upload-icon">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 16V8M12 8l-3 3M12 8l3 3" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M20 16.5A4.5 4.5 0 0016 12h-1a8 8 0 10-8 8.5" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <h3>Drop your CTVC CSV/Excel here</h3>
+        <p>or click to browse — first analysis may take 10-15 seconds to load Python</p>
+      </div>
+
+      <div style="text-align:center; margin-bottom: 24px;">
+        <span style="color: var(--text3); font-size: 13px;">No file yet? </span>
+        <button class="demo-link" onclick="loadDemoData()">Load demo dataset</button>
+      </div>
+
+      <div class="field-map" id="field-map" style="display:none;">
+        <h4>Map your columns</h4>
+        <div class="field-row"><span class="field-label">Company name</span><select id="map-company"></select></div>
+        <div class="field-row"><span class="field-label">Country / HQ</span><select id="map-country"></select></div>
+        <div class="field-row"><span class="field-label">Round type</span><select id="map-round"></select></div>
+        <div class="field-row"><span class="field-label">Round date</span><select id="map-date"></select></div>
+        <div class="field-row"><span class="field-label">Round size (USD/GBP)</span><select id="map-size"></select></div>
+        <div class="field-row"><span class="field-label">Sector / vertical</span><select id="map-sector"></select></div>
+      </div>
+
+      <div style="text-align:center;">
+        <button class="btn-primary" id="run-btn" onclick="runAnalysis()" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 3l14 9-14 9V3z" fill="currentColor"/></svg>
+          Run analysis
+        </button>
+      </div>
+    </div>
+
+    <div class="screen" id="screen-progress">
+      <div class="progress-screen">
+        <h2 id="progress-title">Loading Python environment...</h2>
+        <p id="progress-desc">First load may take 10-15 seconds</p>
+        <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+        <div class="progress-label" id="progress-label">0%</div>
+      </div>
+    </div>
+
+    <div class="screen" id="screen-results">
+      <div class="results-header">
+        <div>
+          <h2>UK M&A targets — <span id="target-count">0</span> identified</h2>
+          <p style="color:var(--text2); font-size:13px; margin-top:4px;" id="results-subtitle"></p>
+        </div>
+        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+          <button class="btn-secondary" onclick="showScreen('upload')">New upload</button>
+          <button class="export-btn" onclick="exportCSV()">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 16V8M12 16l-3-3M12 16l3-3" stroke-linecap="round" stroke-linejoin="round"/><path d="M20 16.5A4.5 4.5 0 0016 12h-1a8 8 0 10-8 8.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <div class="threshold-control" style="margin-bottom: 20px; padding: 12px; background: var(--bg2); border-radius: var(--radius); display: flex; gap: 20px; align-items: center; flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <span style="font-family: var(--font-mono); font-size: 12px; color: var(--text2);">⚠️ Overdue threshold:</span>
+          <input type="range" id="prob-threshold" min="0.40" max="0.95" step="0.01" value="0.55" style="width: 200px;">
+          <span id="threshold-value" style="font-family: var(--font-mono); font-size: 13px; color: var(--accent);">55%</span>
+        </div>
+        <div style="font-size: 12px; color: var(--text3);">
+          Lower = more companies (more false positives) | Higher = fewer companies (higher confidence)
+        </div>
+      </div>
+
+      <div class="stats-row" id="stats-row"></div>
+      <div class="model-info" id="model-info"></div>
+      <div id="sector-breakdown"></div>
+
+      <div class="filters">
+        <input type="text" class="search-input" placeholder="Search company..." id="search-input" oninput="applyFiltersWithThreshold()">
+        <select class="filter-select" id="filter-transition" onchange="applyFiltersWithThreshold()"><option value="">All transitions</option></select>
+        <select class="filter-select" id="filter-sector" onchange="applyFiltersWithThreshold()"><option value="">All sectors</option></select>
+        <select class="filter-select" id="filter-urgency" onchange="applyFiltersWithThreshold()">
+          <option value="">All urgency</option>
+          <option value="critical">Critical (≥85% prob overdue)</option>
+          <option value="high">High (≥70%)</option>
+          <option value="medium">Medium (≥55%)</option>
+        </select>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th onclick="sortBy('rank')">#</th>
+              <th onclick="sortBy('company')">Company</th>
+              <th onclick="sortBy('sector')">Sector</th>
+              <th onclick="sortBy('transition')">Transition</th>
+              <th onclick="sortBy('lastRaise')">Last raise</th>
+              <th onclick="sortBy('monthsElapsed')">Months elapsed</th>
+              <th onclick="sortBy('conditionalProb')">P(overdue) ↑</th>
+              <th onclick="sortBy('expectedNextSize')">Est. next round</th>
+              <th onclick="sortBy('vintageAdj')">Vintage adj.</th>
+            </tr>
+          </thead>
+          <tbody id="results-tbody"></tbody>
+        </table>
+      </div>
+      <p style="color:var(--text3); font-size:12px; margin-top:12px; font-family:var(--font-mono);">
+        P(overdue) = conditional probability they have not yet raised, given elapsed time — computed from vintage-adjusted Weibull survival function. Higher = more likely an acquisition target or distressed.
+      </p>
+    </div>
+
+    <div class="tfn-brand">
+      Powered by Transition Finance Network — Data-driven M&A intelligence for the climate economy
+    </div>
+  </main>
+</div>
+
+<script>
+// ============================================================================
+// GLOBAL STATE
+// ============================================================================
+let parsedRows = [];
+let resultsData = [];
+let filteredData = [];
+let columnHeaders = [];
+let columnMapping = {};
+let sortState = { col: 'conditionalProb', dir: -1 };
+let pyodide = null;
+let pyodideLoading = false;
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+function updateProgress(pct, title, desc) {
+  const bar = document.getElementById('progress-bar');
+  const label = document.getElementById('progress-label');
+  const titleEl = document.getElementById('progress-title');
+  const descEl = document.getElementById('progress-desc');
+  if (bar) bar.style.width = pct + '%';
+  if (label) label.textContent = pct + '%';
+  if (titleEl) titleEl.textContent = title;
+  if (descEl) descEl.textContent = desc;
+}
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  const screen = document.getElementById('screen-' + name);
+  if (screen) screen.classList.add('active');
+}
+
+function setStatus(type, text) {
+  const dot = document.getElementById('status-dot');
+  const txt = document.getElementById('status-text');
+  if (dot) dot.className = 'status-dot' + (type === 'active' ? ' active' : '');
+  if (txt) txt.textContent = text;
+}
+
+function formatGBP(n) {
+  if (!n || isNaN(n)) return '—';
+  if (n >= 1e9) return '£' + (n/1e9).toFixed(1) + 'bn';
+  if (n >= 1e6) return '£' + Math.round(n/1e6) + 'm';
+  if (n >= 1e3) return '£' + Math.round(n/1e3) + 'k';
+  return '£' + Math.round(n);
+}
+
+function isUK(country) {
+  if (!country) return false;
+  const s = String(country).toLowerCase().trim();
+  return s.includes('uk') || s.includes('united kingdom') || s.includes('england') ||
+    s.includes('scotland') || s.includes('wales') || s.includes('london') ||
+    s.includes('manchester') || s.includes('cambridge') || s.includes('oxford') ||
+    s === 'gb' || s === 'gbr';
+}
+
+function parseCSV(text) {
+  const lines = text.trim().split('\n');
+  if (!lines.length) return [];
+  const headers = splitCSVLine(lines[0]);
+  return lines.slice(1).map(line => {
+    const vals = splitCSVLine(line);
+    const obj = {};
+    headers.forEach((h, i) => { obj[h.trim()] = (vals[i] || '').trim(); });
+    return obj;
+  }).filter(r => Object.values(r).some(v => v));
+}
+
+function splitCSVLine(line) {
+  const result = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') { inQ = !inQ; continue; }
+    if (ch === ',' && !inQ) { result.push(cur); cur = ''; continue; }
+    cur += ch;
+  }
+  result.push(cur);
+  return result;
+}
+
+function findTargetSheet(workbook, targetSheetName) {
+  if (workbook.Sheets[targetSheetName]) return workbook.Sheets[targetSheetName];
+  for (const name of workbook.SheetNames) {
+    if (name.toLowerCase().includes(targetSheetName.toLowerCase())) return workbook.Sheets[name];
+  }
+  return workbook.Sheets[workbook.SheetNames[0]];
+}
+
+function showColumnMapper() {
+  const hints = {
+    'map-company': ['company', 'name', 'organisation'],
+    'map-country': ['country', 'location', 'geography'],
+    'map-round': ['round', 'stage', 'type', 'series'],
+    'map-date': ['date', 'year/quarter', 'announced'],
+    'map-size': ['size', 'amount', 'value', '$mn'],
+    'map-sector': ['sector', 'vertical', 'climate vertical'],
+  };
+  Object.entries(hints).forEach(([id, hintList]) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    sel.innerHTML = '<option value="">— not mapped —</option>';
+    columnHeaders.forEach(h => {
+      const opt = document.createElement('option');
+      opt.value = h; opt.textContent = h;
+      sel.appendChild(opt);
+    });
+    const match = columnHeaders.find(h => hintList.some(kw => h.toLowerCase().includes(kw)));
+    if (match) sel.value = match;
+  });
+  const fieldMap = document.getElementById('field-map');
+  if (fieldMap) fieldMap.style.display = 'block';
+  const runBtn = document.getElementById('run-btn');
+  if (runBtn) runBtn.disabled = false;
+}
+
+// ============================================================================
+// FILE HANDLING
+// ============================================================================
+function handleFile(file) {
+  if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      const data = new Uint8Array(e.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = findTargetSheet(workbook, 'CTVC deals data_inputs');
+      if (!sheet) { alert('Could not find sheet. Available: ' + workbook.SheetNames.join(', ')); return; }
+      const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      let headerRowIndex = 0;
+      for (let i = 0; i < Math.min(10, json.length); i++) {
+        const row = json[i];
+        if (row && row.some(cell => ['name','round','year/quarter','date'].some(kw => String(cell||'').toLowerCase().includes(kw)))) { headerRowIndex = i; break; }
+      }
+      const headers = json[headerRowIndex].map(h => String(h || '').trim());
+      parsedRows = [];
+      for (let i = headerRowIndex + 1; i < json.length; i++) {
+        const row = json[i];
+        if (!row || row.every(cell => !cell || cell === '')) continue;
+        const obj = {};
+        headers.forEach((h, idx) => { if (h) obj[h] = row[idx] !== undefined ? String(row[idx]).trim() : ''; });
+        if (Object.values(obj).some(v => v)) parsedRows.push(obj);
+      }
+      if (!parsedRows.length) { alert('Could not parse data.'); return; }
+      columnHeaders = Object.keys(parsedRows[0]);
+      showColumnMapper();
+    };
+    reader.readAsArrayBuffer(file);
+  } else {
+    const reader = new FileReader();
+    reader.onload = function(e) {
+      parsedRows = parseCSV(e.target.result);
+      columnHeaders = Object.keys(parsedRows[0]);
+      showColumnMapper();
+    };
+    reader.readAsText(file);
+  }
+}
+
+document.getElementById('file-input').addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+const uploadZone = document.getElementById('upload-zone');
+if (uploadZone) {
+  uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+  uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+  uploadZone.addEventListener('drop', e => { e.preventDefault(); uploadZone.classList.remove('drag-over'); if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+}
+
+// ============================================================================
+// DEMO DATA — richer, with size variation for regression
+// ============================================================================
+function generateDemoData() {
+  const companies = [
+    { company: 'Solaris Grid Technologies', country: 'United Kingdom', sector: 'Grid & Storage' },
+    { company: 'Verdant Carbon Intelligence', country: 'United Kingdom', sector: 'Carbon Accounting' },
+    { company: 'NovaCycle Materials', country: 'United Kingdom', sector: 'Recycling' },
+    { company: 'Heliox Energy Systems', country: 'United Kingdom', sector: 'EV Charging' },
+    { company: 'BlueTide Ocean Energy', country: 'United Kingdom', sector: 'Offshore Wind' },
+    { company: 'Lumio Building Tech', country: 'United Kingdom', sector: 'Built Environment' },
+    { company: 'AgroBio Systems', country: 'United Kingdom', sector: 'Sustainable Food' },
+    { company: 'FluxStore Batteries', country: 'United Kingdom', sector: 'Battery Storage' },
+    { company: 'Meridian Water Tech', country: 'United Kingdom', sector: 'Water' },
+    { company: 'Pyrene Green Hydrogen', country: 'United Kingdom', sector: 'Hydrogen' },
+    { company: 'ClearMesh Grid AI', country: 'United Kingdom', sector: 'Energy Software' },
+    { company: 'Solvus Energy Storage', country: 'United Kingdom', sector: 'Battery Storage' },
+    { company: 'TerraFlow Climate', country: 'United Kingdom', sector: 'Carbon Accounting' },
+    { company: 'Aurion Renewables', country: 'United Kingdom', sector: 'Solar' },
+    { company: 'Kelvin Heat Systems', country: 'United Kingdom', sector: 'Built Environment' },
+    { company: 'DataCarbon Analytics', country: 'United Kingdom', sector: 'Energy Software' },
+    { company: 'Photon Solar Finance', country: 'United Kingdom', sector: 'Solar' },
+    { company: 'Apex Bioenergy', country: 'United Kingdom', sector: 'Bioenergy' },
+    { company: 'Nautilus Marine Energy', country: 'United Kingdom', sector: 'Offshore Wind' },
+    { company: 'CircleWaste Systems', country: 'United Kingdom', sector: 'Recycling' },
+  ];
+
+  const roundSizes = {
+    'Pre-Seed': 750000,
+    'Seed': 3200000,
+    'Series A': 13000000,
+    'Series B': 42000000,
+  };
+
+  const rows = [];
+  companies.forEach((c, i) => {
+    const numRounds = 1 + (i % 3);
+    const roundSequence = ['Pre-Seed', 'Seed', 'Series A', 'Series B'].slice(0, numRounds);
+    const startYear = 2018 + (i % 5);
+    const startMonth = (i * 2) % 12;
+    let d = new Date(startYear, startMonth, 1);
+
+    roundSequence.forEach((round, ri) => {
+      const sizeVar = 0.6 + Math.random() * 0.8;
+      rows.push({
+        company: c.company,
+        country: c.country,
+        sector: c.sector,
+        round_type: round,
+        date: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-01',
+        amount_usd: Math.round(roundSizes[round] * sizeVar),
+      });
+      // Gaps: older vintages (2018-20) were shorter; more recent longer
+      const baseGap = { 'Pre-Seed': 14, 'Seed': 18, 'Series A': 22, 'Series B': 26 }[round] || 20;
+      const vintageSlowdown = Math.max(0, startYear - 2020) * 2; // post-2020 market slows
+      const gapMonths = baseGap + vintageSlowdown + (Math.random() * 8 - 4);
+      d = new Date(d.getFullYear(), d.getMonth() + Math.round(gapMonths), 1);
+    });
+  });
+  return rows;
+}
+
+function loadDemoData() {
+  parsedRows = generateDemoData();
+  columnHeaders = Object.keys(parsedRows[0]);
+  showColumnMapper();
+  ['map-company','map-country','map-round','map-date','map-size','map-sector'].forEach((id, i) => {
+    const keys = ['company','country','round_type','date','amount_usd','sector'];
+    const el = document.getElementById(id);
+    if (el) el.value = keys[i];
+  });
+  document.getElementById('run-btn').disabled = false;
+}
+
+// ============================================================================
+// PYODIDE
+// ============================================================================
+async function initPyodide() {
+  if (pyodide) return pyodide;
+  if (pyodideLoading) { while (!pyodide) await new Promise(r => setTimeout(r, 100)); return pyodide; }
+  
+  pyodideLoading = true;
+  updateProgress(5, 'Loading Python environment...', 'First load may take 10-15 seconds');
+  pyodide = await loadPyodide();
+  
+  updateProgress(15, 'Loading packages...', 'Loading pandas, numpy, scipy');
+  await pyodide.loadPackage(['pandas', 'numpy', 'scipy']);
+  
+  updateProgress(18, 'Loading statsmodels...', 'Installing statsmodels for vintage factor regression');
+  // Load micropip first
+  await pyodide.loadPackage('micropip');
+  const micropip = pyodide.pyimport('micropip');
+  // Install statsmodels (pure Python, works in Pyodide)
+  await micropip.install('statsmodels');
+  
+  updateProgress(20, 'Python ready', 'Environment loaded');
+  pyodideLoading = false;
+  return pyodide;
+}
+
+// ============================================================================
+// ANALYSIS
+// ============================================================================
+async function runAnalysis() {
+  columnMapping = {
+    company: document.getElementById('map-company').value,
+    country: document.getElementById('map-country').value,
+    round: document.getElementById('map-round').value,
+    date: document.getElementById('map-date').value,
+    size: document.getElementById('map-size').value,
+    sector: document.getElementById('map-sector').value,
+  };
+  if (!columnMapping.company || !columnMapping.round || !columnMapping.date) {
+    alert('Please map at least: Company name, Round type, and Round date.');
+    return;
+  }
+  showScreen('progress');
+  await runPythonAnalysis();
+}
+
+async function runPythonAnalysis() {
+  try {
+    await initPyodide();
+    updateProgress(25, 'Preparing data...', 'Cleaning and structuring records');
+
+    const dataToPass = parsedRows.map(row => {
+      const newRow = {};
+      for (const key in row) {
+        newRow[key] = (row[key] && typeof row[key] === 'string')
+          ? row[key].replace(/[\x00-\x1F\x7F-\x9F]/g, '')
+          : row[key];
+      }
+      return newRow;
+    });
+
+    pyodide.globals.set('py_data', pyodide.toPy(dataToPass));
+    pyodide.globals.set('py_mapping', pyodide.toPy(columnMapping));
+
+    updateProgress(40, 'Fitting survival models...', 'Weibull MLE with data-driven vintage factors');
+
+    const result = await pyodide.runPythonAsync(`
+import json
+import math
+import re
+import pandas as pd
+import numpy as np
+from datetime import datetime
+from scipy import stats
+import warnings
+warnings.filterwarnings('ignore')
+
+data = py_data
+mapping = py_mapping
+df = pd.DataFrame(data)
+TODAY = datetime.now()
+
+ROUND_ORDER = ['Pre-Seed', 'Seed', 'Series A', 'Series B', 'Series C', 'Series D', 'Series E']
+
+# ------------------------------------------------------------------
+# NORMALISATION HELPERS
+# ------------------------------------------------------------------
+def normalise_round(s):
+    if not s:
+        return None
+    s = str(s).lower().strip()
+    if 'pre-seed' in s or 'preseed' in s:
+        return 'Pre-Seed'
+    if s == 'seed' or ('seed' in s and 'pre' not in s):
+        return 'Seed'
+    if 'series a' in s or s == 'a':
+        return 'Series A'
+    if 'series b' in s or s == 'b':
+        return 'Series B'
+    if 'series c' in s or s == 'c':
+        return 'Series C'
+    if 'series d' in s or s == 'd':
+        return 'Series D'
+    if 'series e' in s or s == 'e':
+        return 'Series E'
+    return None
+
+def parse_date(v):
+    if not v:
+        return None
+    s = str(v).strip()
+    
+    # Try quarter format FIRST (CTVC style: "2023-1", "2023-2", etc.)
+    # Check if it's a quarter (second part is 1-4 and not two digits like 01)
+    if '-' in s:
+        parts = s.split('-')
+        if len(parts) == 2 and len(parts[0]) == 4:
+            try:
+                y = int(parts[0])
+                q_str = parts[1]
+                # If it's a single digit 1-4 (quarter) OR two digits 01-04
+                if q_str.isdigit() and 1 <= int(q_str) <= 4:
+                    q = int(q_str)
+                    month = (q - 1) * 3 + 1  # Q1=1, Q2=4, Q3=7, Q4=10
+                    return datetime(y, month, 1)
+            except:
+                pass
+    
+    # Then try full date formats
+    for fmt in ['%Y-%m-%d', '%Y/%m/%d', '%Y-%m', '%Y', '%Y-%m-%d %H:%M:%S']:
+        try:
+            return datetime.strptime(s[:10], fmt)
+        except:
+            continue
+    
+    # Try simple year
+    try:
+        if len(s) == 4 and s.isdigit():
+            return datetime(int(s), 6, 1)
+    except:
+        pass
+    
+    return None
+
+def parse_size(v):
+    if not v:
+        return None
+    s = str(v).strip().replace(',', '')
+    if s == '' or s == '.':
+        return None
+    s = re.sub(r'[£$€]', '', s)
+    match = re.search(r'([\d.]+)\s*([kmb]?)', s, re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        n = float(match.group(1))
+    except ValueError:
+        return None
+    suffix = match.group(2).lower()
+    if suffix == 'k':
+        n *= 1e3
+    elif suffix == 'm':
+        n *= 1e6
+    elif suffix == 'b':
+        n *= 1e9
+    return n if n > 0 else None
+
+def is_uk(country):
+    if not country:
+        return False
+    s = str(country).lower().strip()
+    keywords = ['uk', 'united kingdom', 'england', 'scotland', 'wales', 'london', 
+                'manchester', 'cambridge', 'oxford', 'gb', 'gbr', 'britain']
+    return any(kw in s for kw in keywords)
+
+# ------------------------------------------------------------------
+# STEP 1: BUILD COMPANIES FROM ALL DATA (for vintage factor estimation)
+# ------------------------------------------------------------------
+print("DEBUG: Building companies from all data for vintage estimation...")
+all_companies = {}
+all_transitions = []
+
+for idx, row in df.iterrows():
+    name = str(row.get(mapping['company'], '') or '').strip()
+    if not name:
+        continue
+    
+    country = str(row.get(mapping['country'], '') or '')
+    
+    rtype = normalise_round(row.get(mapping['round'], ''))
+    if not rtype:
+        continue
+    
+    date = parse_date(row.get(mapping['date'], ''))
+    if not date:
+        continue
+    
+    size = parse_size(row.get(mapping['size'], ''))
+    sector = str(row.get(mapping['sector'], 'Unknown') or 'Unknown')
+    
+    if name not in all_companies:
+        all_companies[name] = {'name': name, 'sector': sector, 'rounds': [], 'country': country}
+    
+    round_idx = ROUND_ORDER.index(rtype) if rtype in ROUND_ORDER else -1
+    all_companies[name]['rounds'].append({
+        'round': rtype,
+        'date': date,
+        'size': size,
+        'idx': round_idx
+    })
+
+# Build transitions from ALL companies for vintage factor estimation
+print("DEBUG: Building transitions from all companies...")
+for name, company in all_companies.items():
+    rounds = sorted(company['rounds'], key=lambda x: x['date'])
+    for i in range(len(rounds) - 1):
+        cur, nxt = rounds[i], rounds[i+1]
+        raw_months = (nxt['date'] - cur['date']).days / 30.44
+        if raw_months <= 0 or raw_months > 60:  # Filter outliers > 5 years
+            continue
+        
+        all_transitions.append({
+            'duration_raw': raw_months,
+            'vintage_year': cur['date'].year,
+            'sector': company['sector'],
+            'country': company['country'],
+        })
+
+print(f"DEBUG: Total transitions for vintage fitting: {len(all_transitions)}")
+
+# ------------------------------------------------------------------
+# STEP 2: FIT VINTAGE FACTORS FROM ALL TRANSITIONS (log-linear model)
+# ------------------------------------------------------------------
+import statsmodels.api as sm
+
+# Prepare data for regression: log(duration) ~ year
+X_years = []
+y_durations = []
+
+for t in all_transitions:
+    if t['duration_raw'] > 0:
+        y_durations.append(np.log(t['duration_raw']))
+        X_years.append([1, t['vintage_year'] - 2020])  # center at 2020
+
+if len(y_durations) >= 10:
+    X = np.array(X_years)
+    y = np.array(y_durations)
+    
+    model = sm.OLS(y, X).fit()
+    beta = model.params[1]
+    intercept = model.params[0]
+    
+    print(f"DEBUG: Vintage trend β = {beta:.4f}")
+    print(f"DEBUG: Intercept = {intercept:.4f}")
+    print(f"DEBUG: R² = {model.rsquared:.4f}")
+    
+    # Calculate vintage factors for each year
+    VINTAGE_FACTOR = {}
+    for year in range(2017, 2026):
+        # factor = exp(β * (year - 2020))
+        VINTAGE_FACTOR[year] = np.exp(beta * (year - 2020))
+    
+    print("DEBUG: Vintage factors from data:")
+    for year in sorted(VINTAGE_FACTOR.keys()):
+        print(f"  {year}: {VINTAGE_FACTOR[year]:.2f}")
+    
+    # Cap vintage factors to realistic range (0.7 to 1.5)
+    for year in VINTAGE_FACTOR:
+        VINTAGE_FACTOR[year] = max(0.7, min(1.5, VINTAGE_FACTOR[year]))
+
+print("DEBUG: Capped vintage factors:")
+for year in sorted(VINTAGE_FACTOR.keys()):
+    print(f"  {year}: {VINTAGE_FACTOR[year]:.2f}")
+else:
+    # Fallback if not enough data
+    print("DEBUG: Not enough data for vintage fitting, using defaults")
+    VINTAGE_FACTOR = {
+        2017: 1.05, 2018: 1.0, 2019: 0.98, 2020: 0.95,
+        2021: 0.80, 2022: 1.20, 2023: 1.30, 2024: 1.15, 2025: 1.10,
+    }
+
+def vintage_factor(year):
+    return VINTAGE_FACTOR.get(year, 1.0)
+
+# ------------------------------------------------------------------
+# STEP 3: BUILD UK-ONLY COMPANIES FOR SCORING
+# ------------------------------------------------------------------
+print("DEBUG: Building UK companies for scoring...")
+uk_companies = {}
+for name, company in all_companies.items():
+    if not is_uk(company['country']):
+        continue
+    
+    uk_companies[name] = {
+        'name': name,
+        'sector': company['sector'],
+        'rounds': sorted(company['rounds'], key=lambda x: x['date'])
+    }
+
+print(f"DEBUG: UK companies found: {len(uk_companies)}")
+
+# ------------------------------------------------------------------
+# BUILD TRANSITIONS AND STALLED FOR UK COMPANIES
+# ------------------------------------------------------------------
+transitions = []
+stalled = []
+
+for name, company in uk_companies.items():
+    rounds = company['rounds']
+    if len(rounds) < 2:
+        if rounds:
+            last = rounds[0]
+            if last['idx'] >= 0 and last['idx'] < len(ROUND_ORDER) - 1:
+                next_round = ROUND_ORDER[last['idx'] + 1]
+                months_elapsed = (TODAY - last['date']).days / 30.44
+                vf = vintage_factor(last['date'].year)
+                if months_elapsed > 0:
+                    stalled.append({
+                        'company': name,
+                        'sector': company['sector'],
+                        'last_round': last['round'],
+                        'last_round_date': last['date'].strftime('%Y-%m-%d'),
+                        'last_round_size': last['size'],
+                        'vintage_year': last['date'].year,
+                        'vintage_factor': vf,
+                        'transition': f"{last['round']} → {next_round}",
+                        'months_elapsed': months_elapsed,
+                        'months_elapsed_adj': months_elapsed / vf,
+                    })
+        continue
+    
+    for i in range(len(rounds) - 1):
+        cur, nxt = rounds[i], rounds[i+1]
+        raw_months = (nxt['date'] - cur['date']).days / 30.44
+        if raw_months <= 0:
+            continue
+        vf = vintage_factor(cur['date'].year)
+        adj_months = raw_months / vf
+        
+        transitions.append({
+            'transition': f"{cur['round']} → {nxt['round']}",
+            'duration_raw': raw_months,
+            'duration_adj': adj_months,
+            'vintage_year': cur['date'].year,
+            'sector': company['sector'],
+        })
+    
+    last = rounds[-1]
+    if last['idx'] >= 0 and last['idx'] < len(ROUND_ORDER) - 1:
+        next_round = ROUND_ORDER[last['idx'] + 1]
+        months_elapsed = (TODAY - last['date']).days / 30.44
+        if months_elapsed > 0:
+            vf = vintage_factor(last['date'].year)
+            stalled.append({
+                'company': name,
+                'sector': company['sector'],
+                'last_round': last['round'],
+                'last_round_date': last['date'].strftime('%Y-%m-%d'),
+                'last_round_size': last['size'],
+                'vintage_year': last['date'].year,
+                'vintage_factor': vf,
+                'transition': f"{last['round']} → {next_round}",
+                'months_elapsed': months_elapsed,
+                'months_elapsed_adj': months_elapsed / vf,
+            })
+
+trans_df = pd.DataFrame(transitions)
+stalled_df = pd.DataFrame(stalled)
+
+print(f"DEBUG: Transitions (UK): {len(trans_df)}")
+print(f"DEBUG: Stalled (UK): {len(stalled_df)}")
+
+# ------------------------------------------------------------------
+# WEIBULL MLE — per transition type (using UK transitions only)
+# ------------------------------------------------------------------
+DEFAULT_PARAMS = {
+    'Pre-Seed → Seed':    {'k': 1.8, 'scale': 12.0},
+    'Seed → Series A':    {'k': 1.9, 'scale': 18.0},
+    'Series A → Series B':{'k': 1.7, 'scale': 28.0},  # Increased from 21
+    'Series B → Series C':{'k': 1.6, 'scale': 34.0},  # Increased from 26
+    'Series C → Series D':{'k': 1.5, 'scale': 40.0},  # Increased from 30
+    'Series D → Series E':{'k': 1.4, 'scale': 46.0},  # Increased from 34
+}
+
+def fit_weibull(durations):
+    d = np.array(durations)
+    d = d[np.isfinite(d) & (d > 0.5)]
+    if len(d) < 4:
+        return None, None
+    try:
+        k, loc, scale = stats.weibull_min.fit(d, floc=0)
+        if k is None or scale is None or k < 0.5 or k > 8 or scale < 1:
+            return None, None
+        return float(k), float(scale)
+    except:
+        return None, None
+
+def weibull_sf(t, k, scale):
+    if t <= 0:
+        return 1.0
+    return float(np.exp(-(t / scale) ** k))
+
+def weibull_quantile(p, k, scale):
+    return scale * (-np.log(1 - p)) ** (1 / k)
+
+def conditional_survival(t_elapsed, k, scale, t_min):
+    s_t = weibull_sf(t_elapsed, k, scale)
+    s_min = weibull_sf(t_min, k, scale)
+    if s_min <= 0:
+        return 1.0
+    return min(s_t / s_min, 1.0)
+
+# ------------------------------------------------------------------
+# SCORE EVERY STALLED COMPANY
+# ------------------------------------------------------------------
+results = []
+MIN_MONTHS_TO_CONSIDER = 12  # Don't flag companies that raised less than a year ago
+
+if len(stalled_df) > 0:
+    for transition_type in stalled_df['transition'].unique():
+        hist = trans_df[trans_df['transition'] == transition_type]['duration_adj'].dropna()
+        default = DEFAULT_PARAMS.get(transition_type, {'k': 1.7, 'scale': 24.0})
+        
+        if len(hist) >= 5:  # Require at least 5 observations for fitting
+            k_fit, scale_fit = fit_weibull(hist.values)
+            if k_fit is None or scale_fit is None:
+                k, scale = default['k'], default['scale']
+            else:
+                k, scale = k_fit, scale_fit
+        else:
+            k, scale = default['k'], default['scale']
+        
+        t_min = weibull_quantile(0.40, k, scale)  # Increased from 0.30
+        
+        p50_raw = weibull_quantile(0.50, k, scale)
+        p75_raw = weibull_quantile(0.75, k, scale)
+        p90_raw = weibull_quantile(0.90, k, scale)
+        
+        for _, row in stalled_df[stalled_df['transition'] == transition_type].iterrows():
+            vf = row['vintage_factor']
+            t_adj = row['months_elapsed_adj']
+            t_raw = row['months_elapsed']
+            
+            p50_display = round(p50_raw * vf)
+            p75_display = round(p75_raw * vf)
+            p90_display = round(p90_raw * vf)
+            t_min_display = t_min * vf
+            
+            # Minimum elapsed time filter
+            if t_raw < MIN_MONTHS_TO_CONSIDER:
+                continue
+            
+            # Skip if not past conditioning threshold
+            if t_raw < t_min_display * 0.9:
+                continue
+            
+            cond_prob = conditional_survival(t_adj, k, scale, t_min)
+            
+            if cond_prob >= 0.85:
+                urgency = 'critical'
+            elif cond_prob >= 0.70:
+                urgency = 'high'
+            elif cond_prob >= 0.55:
+                urgency = 'medium'
+            else:
+                continue
+            
+            size_multipliers = {
+                'Pre-Seed → Seed': 3.5,
+                'Seed → Series A': 4.2,
+                'Series A → Series B': 3.8,
+                'Series B → Series C': 3.2,
+                'Series C → Series D': 2.8,
+                'Series D → Series E': 2.5,
+            }
+            mult = size_multipliers.get(transition_type, 3.0)
+            time_penalty = 1.0 if cond_prob < 0.85 else (0.9 if cond_prob < 0.92 else 0.8)
+            expected_next = row['last_round_size'] * mult * time_penalty if row['last_round_size'] else None
+            
+            k_lo = max(k * 0.85, 0.5)
+            k_hi = min(k * 1.15, 6.0)
+            cond_lo = conditional_survival(t_adj, k_hi, scale, t_min)
+            cond_hi = conditional_survival(t_adj, k_lo, scale, t_min)
+            
+            results.append({
+                'rank': 0,
+                'company': row['company'],
+                'sector': row['sector'],
+                'transition': transition_type,
+                'last_round': row['last_round'],
+                'last_raise_date': row['last_round_date'],
+                'last_raise_size': row['last_round_size'],
+                'months_elapsed': round(t_raw, 1),
+                'vintage_year': int(row['vintage_year']),
+                'vintage_factor': round(vf, 2),
+                'expected_p50': p50_display,
+                'expected_p75': p75_display,
+                'expected_p90': p90_display,
+                'months_vs_median': round(t_raw - p50_display, 1),
+                'cond_prob_overdue': round(cond_prob, 3),
+                'cond_prob_lo': round(cond_lo, 3),
+                'cond_prob_hi': round(cond_hi, 3),
+                'expected_next_size': expected_next,
+                'weibull_k': round(k, 2),
+                'weibull_scale': round(scale, 1),
+                'n_historical': len(hist),
+                'urgency': urgency,
+            })
+
+results_df = pd.DataFrame(results) if results else pd.DataFrame()
+if len(results_df) > 0:
+    results_df = results_df.sort_values('cond_prob_overdue', ascending=False)
+    results_df['rank'] = range(1, len(results_df) + 1)
+    output = results_df.to_dict(orient='records')
+else:
+    output = []
+
+json.dumps(output)
+    `);
+
+    updateProgress(90, 'Processing results...', 'Preparing output');
+    const parsedResult = JSON.parse(result);
+    resultsData = parsedResult;
+    filteredData = [...resultsData];
+    updateProgress(100, 'Analysis complete!', 'Rendering results');
+    setTimeout(() => { renderResults(); showScreen('results'); setStatus('active', resultsData.length + ' targets identified'); }, 500);
+
+  } catch (error) {
+    console.error('Pyodide error:', error);
+    updateProgress(0, 'Error in analysis', String(error.message || error));
+    alert('Analysis failed: ' + String(error.message || error) + '\n\nTry loading demo data instead.');
+  }
+}
+
+// ============================================================================
+// RENDERING
+// ============================================================================
+function renderResults() {
+  document.getElementById('target-count').textContent = resultsData.length;
+
+  const totalUK = new Set(parsedRows.filter(r => isUK(r[columnMapping.country])).map(r => r[columnMapping.company])).size;
+  const criticals = resultsData.filter(r => r.urgency === 'critical').length;
+  const highs = resultsData.filter(r => r.urgency === 'high').length;
+  const totalExpected = resultsData.reduce((s, r) => s + (r.expected_next_size || 0), 0);
+
+  document.getElementById('results-subtitle').textContent =
+    `Analysed ${totalUK} UK companies from ${parsedRows.length} funding events`;
+
+  document.getElementById('stats-row').innerHTML = `
+    <div class="stat-card"><div class="stat-label">M&A targets</div><div class="stat-value accent">${resultsData.length}</div></div>
+    <div class="stat-card"><div class="stat-label">Critical (≥85%)</div><div class="stat-value red">${criticals}</div></div>
+    <div class="stat-card"><div class="stat-label">High (≥70%)</div><div class="stat-value amber">${highs}</div></div>
+    <div class="stat-card"><div class="stat-label">Est. pipeline</div><div class="stat-value">${formatGBP(totalExpected)}</div></div>
+  `;
+
+  document.getElementById('model-info').innerHTML = `
+    <strong>Vintage-adjusted Weibull Survival Model</strong> — 
+    Each transition type (e.g. Seed → Series A) is fitted independently using maximum likelihood estimation on your historical data, 
+    with a market-condition factor applied per cohort year (2021 hot market ≈ 0.80×, 2022–23 correction ≈ 1.20–1.30×). 
+    The primary signal is <strong>P(overdue)</strong> — the <em>conditional</em> probability that a company has not yet raised, 
+    given that it has been waiting at least past the 30th-percentile threshold. 
+    This correctly accounts for the shape of the Weibull tail rather than using a simple ratio. 
+    Confidence bounds shown are ±15% shape uncertainty.
+  `;
+
+  // Sector breakdown
+  const sectorCounts = {};
+  resultsData.forEach(r => { sectorCounts[r.sector] = (sectorCounts[r.sector] || 0) + 1; });
+  const sortedSectors = Object.entries(sectorCounts).sort((a,b) => b[1]-a[1]).slice(0, 8);
+  const maxCount = Math.max(...sortedSectors.map(s => s[1]), 1);
+  let sectorHTML = '<div class="sector-chart"><h4>Targets by sector</h4>';
+  sortedSectors.forEach(([name, count]) => {
+    sectorHTML += `<div class="sector-row">
+      <span class="sector-name">${name}</span>
+      <div class="sector-bar-bg"><div class="sector-bar" style="width:${Math.round(count/maxCount*100)}%"></div></div>
+      <span class="sector-count">${count}</span>
+    </div>`;
+  });
+  sectorHTML += '</div>';
+  document.getElementById('sector-breakdown').innerHTML = sectorHTML;
+
+  // Populate filters
+  const transitions = [...new Set(resultsData.map(r => r.transition))].sort();
+  const sectors = [...new Set(resultsData.map(r => r.sector))].sort();
+  const tSel = document.getElementById('filter-transition');
+  tSel.innerHTML = '<option value="">All transitions</option>';
+  transitions.forEach(t => tSel.innerHTML += `<option value="${t}">${t}</option>`);
+  const sSel = document.getElementById('filter-sector');
+  sSel.innerHTML = '<option value="">All sectors</option>';
+  sectors.forEach(s => sSel.innerHTML += `<option value="${s}">${s}</option>`);
+
+  // Add threshold slider listener
+    const slider = document.getElementById('prob-threshold');
+    const thresholdVal = document.getElementById('threshold-value');
+    if (slider) {
+    slider.oninput = function() {
+        const val = parseFloat(this.value);
+        thresholdVal.textContent = Math.round(val * 100) + '%';
+        // Re-filter results based on new threshold
+        applyFiltersWithThreshold(val);
+    };
+    }
+
+// Apply the current threshold when first rendering
+const currentThreshold = parseFloat(document.getElementById('prob-threshold').value);
+applyFiltersWithThreshold(currentThreshold);
+}
+
+function applyFiltersWithThreshold(thresholdOverride) {
+  const search = document.getElementById('search-input')?.value.toLowerCase() || '';
+  const transition = document.getElementById('filter-transition')?.value || '';
+  const sector = document.getElementById('filter-sector')?.value || '';
+  const urgency = document.getElementById('filter-urgency')?.value || '';
+  const threshold = thresholdOverride !== undefined ? thresholdOverride : 
+                    (document.getElementById('prob-threshold') ? 
+                     parseFloat(document.getElementById('prob-threshold').value) : 0.55);
+  
+  filteredData = resultsData.filter(r => {
+    if (search && !r.company.toLowerCase().includes(search) && !r.sector.toLowerCase().includes(search)) return false;
+    if (transition && r.transition !== transition) return false;
+    if (sector && r.sector !== sector) return false;
+    if (r.cond_prob_overdue < threshold) return false;  // Apply threshold
+    if (urgency) {
+      if (urgency === 'critical' && r.urgency !== 'critical') return false;
+      if (urgency === 'high' && !['high','critical'].includes(r.urgency)) return false;
+      if (urgency === 'medium' && r.urgency !== 'medium') return false;
+    }
+    return true;
+  });
+  renderTable(filteredData);
+  // Update the count display
+  document.getElementById('target-count').textContent = filteredData.length;
+}
+
+function sortBy(col) {
+  if (sortState.col === col) sortState.dir *= -1;
+  else { sortState.col = col; sortState.dir = -1; }
+  filteredData.sort((a, b) => {
+    let av, bv;
+    if (col === 'rank') { av = a.rank; bv = b.rank; }
+    else if (col === 'company') { av = a.company; bv = b.company; }
+    else if (col === 'sector') { av = a.sector; bv = b.sector; }
+    else if (col === 'transition') { av = a.transition; bv = b.transition; }
+    else if (col === 'lastRaise') { av = a.last_raise_date; bv = b.last_raise_date; }
+    else if (col === 'monthsElapsed') { av = a.months_elapsed; bv = b.months_elapsed; }
+    else if (col === 'conditionalProb') { av = a.cond_prob_overdue; bv = b.cond_prob_overdue; }
+    else if (col === 'expectedNextSize') { av = a.expected_next_size || 0; bv = b.expected_next_size || 0; }
+    else if (col === 'vintageAdj') { av = a.vintage_factor; bv = b.vintage_factor; }
+    else { av = a[col]; bv = b[col]; }
+    if (av === null || av === undefined) return 1;
+    if (bv === null || bv === undefined) return -1;
+    if (typeof av === 'string') return av.localeCompare(bv) * sortState.dir;
+    return (av - bv) * sortState.dir;
+  });
+  renderTable(filteredData);
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('results-tbody');
+  if (!data.length) {
+    tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; padding:40px; color:var(--text3);">No companies match the current filters</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = data.map(r => {
+    const probPct = Math.round(r.cond_prob_overdue * 100);
+    const tier = r.urgency === 'critical' ? 'high' : r.urgency === 'high' ? 'mid' : 'low';
+    const roundBadge = r.last_round === 'Seed' ? 'badge-seed'
+      : r.last_round === 'Series A' ? 'badge-a'
+      : r.last_round === 'Series B' ? 'badge-b' : 'badge-c';
+    const lastRaiseStr = r.last_raise_date
+      ? new Date(r.last_raise_date).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' })
+      : '—';
+    const lastSizeStr = r.last_raise_size ? formatGBP(r.last_raise_size) : '';
+    const sizeStr = r.expected_next_size ? formatGBP(r.expected_next_size) : '—';
+    const nLabel = r.n_historical < 5 ? `<span style="color:var(--amber);">prior-only</span>` : `n=${r.n_historical}`;
+    const vintageDir = r.vintage_factor > 1.05 ? `▲ slower` : r.vintage_factor < 0.95 ? `▼ faster` : `≈ neutral`;
+    const vintageColor = r.vintage_factor > 1.05 ? 'var(--amber)' : r.vintage_factor < 0.95 ? 'var(--teal)' : 'var(--text3)';
+
+    return `<tr>
+      <td style="color:var(--text3); font-family:var(--font-mono); font-size:11px;">${r.rank}</td>
+      <td><div class="td-company">${r.company}</div></td>
+      <td><span class="td-sector">${r.sector}</span></td>
+      <td><span class="badge ${roundBadge}">${r.transition}</span><div style="font-size:10px; color:var(--text3); font-family:var(--font-mono); margin-top:3px;">${nLabel}</div></td>
+      <td style="font-family:var(--font-mono); font-size:12px; color:var(--text2);">
+        ${lastRaiseStr}${lastSizeStr ? '<br><span style="color:var(--text3)">' + lastSizeStr + '</span>' : ''}
+      </td>
+      <td>
+        <span class="months-late ${tier}">${r.months_elapsed}mo</span>
+        <div style="font-size:11px; color:var(--text3); font-family:var(--font-mono);">p50: ${r.expected_p50}mo · p75: ${r.expected_p75}mo</div>
+      </td>
+      <td>
+        <div class="tooltip-wrap">
+          <div class="surv-bar-wrap">
+            <div class="surv-bar-bg"><div class="surv-bar ${tier}" style="width:${probPct}%"></div></div>
+            <span class="surv-pct ${tier}">${probPct}%</span>
+          </div>
+          <div class="tip">
+            P(overdue | survived to now) = ${probPct}%<br>
+            95% range: ${Math.round(r.cond_prob_lo*100)}% – ${Math.round(r.cond_prob_hi*100)}%<br>
+            Weibull k=${r.weibull_k}, λ=${r.weibull_scale}mo
+          </div>
+        </div>
+        <div style="font-size:10px; color:var(--text3); font-family:var(--font-mono); margin-top:3px;">${r.urgency}</div>
+      </td>
+      <td><div style="font-family:var(--font-mono); font-size:12px;"><strong>${sizeStr}</strong></div></td>
+      <td>
+        <span style="font-family:var(--font-mono); font-size:11px; color:${vintageColor};">${vintageDir}</span>
+        <div style="font-size:10px; color:var(--text3); font-family:var(--font-mono);">${r.vintage_year} cohort · ${r.vintage_factor}×</div>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function exportCSV() {
+  const headers = ['Rank','Company','Sector','Transition','Last Raise Date','Last Raise Size','Months Elapsed',
+    'P(Overdue) %','P(Overdue) CI Low','P(Overdue) CI High','Expected p50 (mo)','Expected p75 (mo)','Expected p90 (mo)',
+    'Vintage Year','Vintage Factor','Est. Next Round (GBP)','Weibull k','Weibull Scale','N Historical','Urgency'];
+  const rows = filteredData.map(r => [
+    r.rank, r.company, r.sector, r.transition,
+    r.last_raise_date, r.last_raise_size || '',
+    r.months_elapsed,
+    Math.round(r.cond_prob_overdue * 100),
+    Math.round(r.cond_prob_lo * 100),
+    Math.round(r.cond_prob_hi * 100),
+    r.expected_p50, r.expected_p75, r.expected_p90,
+    r.vintage_year, r.vintage_factor,
+    r.expected_next_size ? formatGBP(r.expected_next_size) : '',
+    r.weibull_k, r.weibull_scale, r.n_historical, r.urgency
+  ]);
+  const csv = [headers, ...rows].map(r => r.map(v => `"${v}"`).join(',')).join('\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tfn_ma_targets_' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click();
+}
+</script>
+</body>
+</html>

@@ -132,8 +132,9 @@
   .stat-value.amber { color: var(--amber); }
 
   .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; align-items: center; }
-  .filter-select, .search-input { background: linear-gradient(135deg, var(--bg2), var(--bg3)); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 7px 12px; font-size: 13px; font-family: var(--font-body); outline: none; cursor: pointer; }
+  .filter-select, .search-input { background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 7px 12px; font-size: 13px; font-family: var(--font-body); outline: none; cursor: pointer; }
   .filter-select:focus, .search-input:focus { border-color: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+  .filter-select option { background: var(--bg); color: var(--text); }
   .filter-select option { background: var(--bg); color: var(--text);}
   .search-input { width: 220px; }
   .search-input::placeholder { color: var(--text3); }
@@ -227,6 +228,13 @@
       <div class="upload-hero">
         <h1>Find companies that should have<br><span>raised by now</span></h1>
         <p>Upload your CTVC export. The model identifies UK companies overdue for their next fundraising round — your M&A pipeline, surfaced automatically.</p>
+        <div style="max-width: 520px; margin: 0 auto 24px auto;">
+          <label style="font-family: var(--font-mono); font-size: 12px; color: var(--text2); display: block; text-align: left; margin-bottom: 6px;">🌍 Target country for analysis</label>
+          <select id="target-country-select" style="width: 100%; background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 10px 12px; font-size: 14px; font-family: var(--font-body); outline: none;">
+            <option value="">-- Auto-detect from data --</option>
+          </select>
+          <p style="font-size: 12px; color: var(--text3); margin-top: 6px; text-align: left;">Select a specific country, or leave as auto-detect to analyse all</p>
+        </div>
       </div>
 
       <div class="upload-zone" id="upload-zone">
@@ -356,6 +364,8 @@ let columnMapping = {};
 let sortState = { col: 'conditionalProb', dir: -1 };
 let pyodide = null;
 let pyodideLoading = false;
+let selectedCountry = '';
+let filteredCompanyCount = 0;
 
 // ============================================================================
 // HELPERS
@@ -459,6 +469,24 @@ function showColumnMapper() {
   if (fieldMap) fieldMap.style.display = 'block';
   const runBtn = document.getElementById('run-btn');
   if (runBtn) runBtn.disabled = false;
+
+  // Populate country dropdown from actual data
+  const countrySet = new Set();
+  parsedRows.forEach(row => {
+    const countryVal = row[document.getElementById('map-country').value];
+    if (countryVal && String(countryVal).trim()) {
+      // Extract country name: if there's a comma, take everything after it; otherwise use the whole value
+      const fullValue = String(countryVal).trim();
+      const parts = fullValue.split(',').map(p => p.trim());
+      const country = parts.length > 1 ? parts[parts.length - 1] : fullValue;
+      countrySet.add(country);
+    }
+  });
+  const countrySelect = document.getElementById('target-country-select');
+  countrySelect.innerHTML = '<option value="">-- All countries / Auto-detect --</option>';
+  [...countrySet].sort().forEach(c => {
+    countrySelect.innerHTML += `<option value="${c.replace(/"/g, '&quot;')}">${c}</option>`;
+  });
 }
 
 // ============================================================================
@@ -648,6 +676,8 @@ async function runPythonAnalysis() {
 
     pyodide.globals.set('py_data', pyodide.toPy(dataToPass));
     pyodide.globals.set('py_mapping', pyodide.toPy(columnMapping));
+    selectedCountry = document.getElementById('target-country-select').value;
+    pyodide.globals.set('py_target_country', selectedCountry);
 
     updateProgress(40, 'Fitting survival models...', 'Weibull MLE with data-driven vintage factors');
 
@@ -752,13 +782,22 @@ def parse_size(v):
         n *= 1e9
     return n if n > 0 else None
 
-def is_uk(country):
+def is_target_country(country, target_country_value):
     if not country:
-        return False
-    s = str(country).lower().strip()
-    keywords = ['uk', 'united kingdom', 'england', 'scotland', 'wales', 'london', 
-                'manchester', 'cambridge', 'oxford', 'gb', 'gbr', 'britain']
-    return any(kw in s for kw in keywords)
+      return False
+    if not target_country_value or target_country_value == "":
+      return True  # No filter = include all countries
+    
+    # Extract country name from "City, Country" format
+    country_str = str(country).strip()
+    parts = country_str.split(',')
+    # If there's a comma, take the last part (country); otherwise use the whole string
+    actual_country = parts[-1].strip() if ',' in country_str else country_str
+    
+    s = actual_country.lower()
+    target = str(target_country_value).lower().strip()
+    # Exact match or partial for common variations
+    return target in s or s in target
 
 # ------------------------------------------------------------------
 # STEP 1: BUILD COMPANIES FROM ALL DATA (for vintage factor estimation)
@@ -872,27 +911,24 @@ def vintage_factor(year):
 # ------------------------------------------------------------------
 # STEP 3: BUILD UK-ONLY COMPANIES FOR SCORING
 # ------------------------------------------------------------------
-print("DEBUG: Building UK companies for scoring...")
-uk_companies = {}
 for name, company in all_companies.items():
-    if not is_uk(company['country']):
-        continue
-    
-    uk_companies[name] = {
-        'name': name,
-        'sector': company['sector'],
-        'rounds': sorted(company['rounds'], key=lambda x: x['date'])
-    }
-
-print(f"DEBUG: UK companies found: {len(uk_companies)}")
+  target_country_filter = py_target_country if 'py_target_country' in globals() else ""
+  # Build companies for selected country (or all if empty)
+  filtered_companies = {}
+  for name, company in all_companies.items():
+      if target_country_filter:
+          if not is_target_country(company['country'], target_country_filter):
+              continue
+      # else: include all (no country filter)
+      filtered_companies[name] = company
 
 # ------------------------------------------------------------------
-# BUILD TRANSITIONS AND STALLED FOR UK COMPANIES
+# BUILD TRANSITIONS AND STALLED FOR FILTERED COMPANIES
 # ------------------------------------------------------------------
 transitions = []
 stalled = []
 
-for name, company in uk_companies.items():
+for name, company in filtered_companies.items():
     rounds = company['rounds']
     if len(rounds) < 2:
         if rounds:
@@ -1102,12 +1138,19 @@ if len(results_df) > 0:
 else:
     output = []
 
-json.dumps(output)
+# Return both results and metadata
+result_package = {
+    'results': output,
+    'filtered_company_count': len(filtered_companies)
+}
+
+json.dumps(result_package)
     `);
 
     updateProgress(90, 'Processing results...', 'Preparing output');
     const parsedResult = JSON.parse(result);
-    resultsData = parsedResult;
+    resultsData = parsedResult.results || parsedResult; // Support both old and new format
+    filteredCompanyCount = parsedResult.filtered_company_count || 0;
     filteredData = [...resultsData];
     updateProgress(100, 'Analysis complete!', 'Rendering results');
     setTimeout(() => { renderResults(); showScreen('results'); setStatus('active', resultsData.length + ' targets identified'); }, 500);
@@ -1130,8 +1173,9 @@ function renderResults() {
   const highs = resultsData.filter(r => r.urgency === 'high').length;
   const totalExpected = resultsData.reduce((s, r) => s + (r.expected_next_size || 0), 0);
 
-  document.getElementById('results-subtitle').textContent =
-    `Analysed ${totalUK} UK companies from ${parsedRows.length} funding events`;
+  const countryDisplay = selectedCountry || "all countries";
+  document.getElementById('results-subtitle').innerHTML = 
+    `Analysed ${filteredCompanyCount} companies from ${countryDisplay} (${parsedRows.length} total funding events)`;
 
   document.getElementById('stats-row').innerHTML = `
     <div class="stat-card"><div class="stat-label">M&A targets</div><div class="stat-value accent">${resultsData.length}</div></div>
